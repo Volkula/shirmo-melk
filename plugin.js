@@ -61,6 +61,25 @@
         const box = root.querySelector("[data-melk-root]");
         if (box) fill(box);
         recall();
+      },
+      rgb: {
+        label: "Лампы MELK",
+        ready: function () { return liveLamps().length > 0; },
+        hold: function () {
+          const token = ++cmdToken;
+          liveLamps().forEach(function (lamp) { lamp.token = token; });
+        },
+        auto: function (on) {
+          const list = liveLamps();
+          if (!list.length) return;
+          if (on) send(list, function () { return [effectFrame(0)]; }, "Авто");
+          else list.forEach(function (lamp) { lamp.token = ++cmdToken; });
+        },
+        frame: function (rgb, brightness) {
+          if (!rgb) return;
+          syncPending = { rgb: rgb.slice(), bright: brightness };
+          syncWrite();
+        }
       }
     });
   }
@@ -212,6 +231,42 @@
 
   function paint() {
     document.querySelectorAll("[data-melk-root]").forEach(fill);
+  }
+
+  function liveLamps() {
+    return lamps.filter(function (lamp) { return checked.has(lamp.id) && lamp.connected && lamp.char; });
+  }
+
+  let syncPending = null;
+  let syncBusy = false;
+
+  function syncWrite() {
+    if (syncBusy) return;
+    const list = liveLamps();
+    const frame = syncPending;
+    if (!list.length || !frame) return;
+    syncPending = null;
+    syncBusy = true;
+    const token = ++cmdToken;
+    list.forEach(function (lamp) {
+      lamp.token = token;
+      lamp.color = frame.rgb.slice();
+      lamp.brightness = frame.bright;
+    });
+    paintSwatches();
+    radio(function () {
+      const jobs = [];
+      list.forEach(function (lamp) {
+        jobs.push({ lamp: lamp, bytes: colorFrame(lamp, frame.rgb) });
+        jobs.push({ lamp: lamp, bytes: brightFrame(lamp, frame.bright) });
+      });
+      return writeJobs(jobs);
+    }).then(function () {
+      syncBusy = false;
+      if (syncPending) syncWrite();
+    }, function () {
+      syncBusy = false;
+    });
   }
 
   function chosen() {
