@@ -70,19 +70,24 @@
       rgb: {
         label: "Лампы MELK",
         ready: function () { return liveLamps().length > 0; },
-        hold: function () {
-          const token = ++cmdToken;
-          liveLamps().forEach(function (lamp) { lamp.token = token; });
+        targets: function () {
+          return lamps.filter(function (lamp) { return lamp.connected && lamp.char; }).map(function (lamp) {
+            return { id: lamp.id, label: lamp.name };
+          });
         },
-        auto: function (on) {
-          const list = liveLamps();
+        hold: function (ids) {
+          const token = ++cmdToken;
+          picked(ids).forEach(function (lamp) { lamp.token = token; });
+        },
+        auto: function (on, ids) {
+          const list = picked(ids);
           if (!list.length) return;
           if (on) send(list, function () { return [effectFrame(0)]; }, "Авто");
           else list.forEach(function (lamp) { lamp.token = ++cmdToken; });
         },
-        frame: function (rgb, brightness) {
+        frame: function (rgb, brightness, force, ids) {
           if (!rgb) return;
-          syncPending = { rgb: rgb.slice(), bright: brightness };
+          syncPending = { rgb: rgb.slice(), bright: brightness, ids: ids || null };
           syncWrite();
         }
       }
@@ -242,13 +247,21 @@
     return lamps.filter(function (lamp) { return checked.has(lamp.id) && lamp.connected && lamp.char; });
   }
 
+  function picked(ids) {
+    const pool = ids ? lamps.filter(function (lamp) { return lamp.connected && lamp.char; }) : liveLamps();
+    if (!ids) return pool;
+    const want = {};
+    ids.forEach(function (id) { want[id] = true; });
+    return pool.filter(function (lamp) { return want[lamp.id]; });
+  }
+
   let syncPending = null;
   let syncBusy = false;
 
   function syncWrite() {
     if (syncBusy) return;
-    const list = liveLamps();
     const frame = syncPending;
+    const list = frame ? picked(frame.ids) : [];
     if (!list.length || !frame) return;
     syncPending = null;
     syncBusy = true;
