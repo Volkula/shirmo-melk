@@ -53,6 +53,11 @@
       dockHtml: function () {
         return '<details class="dock-fold" data-fold="melk"' + (foldOpen ? " open" : "") + '><summary>Лампы</summary><div data-melk-root></div></details>';
       },
+      boot: function (env) {
+        envRef = env;
+        hydrate();
+        recall();
+      },
       bindDock: function (root, env) {
         envRef = env;
         hydrate();
@@ -481,8 +486,15 @@
       if (!lamp) return;
       lamp.connected = false;
       lamp.char = null;
-      setStatus(lamp.name + " отключилась");
       paint();
+      if (lamp.gone) return;
+      setStatus(lamp.name + " отключилась");
+      lamp.tries = (lamp.tries || 0) + 1;
+      if (lamp.tries > 2) return;
+      setTimeout(function () {
+        if (lamp.gone || lamp.connected || lamp.device !== device) return;
+        openDevice(device).catch(function () {});
+      }, 700);
     });
   }
 
@@ -515,12 +527,17 @@
       const service = await server.getPrimaryService(SERVICE);
       lamp.char = await service.getCharacteristic(WRITE);
       lamp.connected = true;
+      lamp.tries = 0;
       persist();
       paint();
       await radio(async function () {
         await writeOne(lamp, [0x7e, 0x07, 0x83]);
         await sleep(160);
-        await writeOne(lamp, [0x7e, 0x04, 0x04]);
+        await writeOne(lamp, powerFrame(lamp, true));
+        await sleep(80);
+        await writeOne(lamp, colorFrame(lamp, lamp.color));
+        await sleep(40);
+        await writeOne(lamp, brightFrame(lamp, lamp.brightness));
       });
       setStatus(lamp.name + " на связи");
     })();
@@ -602,6 +619,7 @@
       drop.type = "button";
       drop.setAttribute("aria-label", "Убрать " + lamp.name);
       drop.addEventListener("click", function () {
+        lamp.gone = true;
         bump([lamp]);
         try { if (lamp.device && lamp.device.gatt && lamp.device.gatt.connected) lamp.device.gatt.disconnect(); } catch (err) {}
         checked.delete(lamp.id);
