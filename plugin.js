@@ -131,6 +131,12 @@
     return campaign.plugins.melk;
   }
 
+  function savedBright(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 30;
+    return clamp(Math.round(n), 0, 100);
+  }
+
   function hydrate() {
     const data = bag();
     if (!data) return;
@@ -145,7 +151,7 @@
         name: String(saved.name || "Лампа"),
         dialect: knownDialect(saved.dialect),
         color: [255, 176, 96],
-        brightness: 80,
+        brightness: savedBright(saved.brightness),
         device: null,
         char: null,
         token: 0,
@@ -160,7 +166,7 @@
     const data = bag();
     if (!data) return;
     data.lamps = lamps.map(function (lamp) {
-      return { id: lamp.id, name: lamp.name, dialect: lamp.dialect };
+      return { id: lamp.id, name: lamp.name, dialect: lamp.dialect, brightness: clamp(Math.round(lamp.brightness), 0, 100) };
     });
     data.fade = fadeOn;
     data.seconds = seconds;
@@ -500,7 +506,7 @@
         name: String(device.name || "Лампа").trim() || "Лампа",
         dialect: guessDialect(device.name),
         color: [255, 176, 96],
-        brightness: 80,
+        brightness: 30,
         device: null,
         char: null,
         token: 0,
