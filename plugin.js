@@ -421,41 +421,22 @@
     tick();
   }
 
-  function applyBright(level) {
-    const list = need();
-    if (!list) return;
-    const goal = clamp(Math.round(level), 0, 100);
-    if (!fadeOn) {
-      list.forEach(function (lamp) { lamp.brightness = goal; });
-      send(list, function (lamp) { return [brightFrame(lamp, goal)]; }, "Яркость");
-      return;
-    }
-    const token = bump(list);
-    const from = list.map(function (lamp) { return lamp.brightness; });
-    const steps = Math.max(2, Math.round(seconds / 0.12));
-    const gap = Math.max(0, seconds / steps - 0.04);
-    let step = 0;
-    setStatus("Переход");
-    function tick() {
-      if (!alive(list, token)) return;
-      step += 1;
-      const t = step / steps;
-      const jobs = list.map(function (lamp, index) {
-        lamp.brightness = from[index] + (goal - from[index]) * t;
-        return { lamp: lamp, bytes: brightFrame(lamp, lamp.brightness) };
-      });
-      radio(function () {
-        return writeJobs(jobs).then(function () { return gap ? sleep(gap * 1000) : null; });
-      }).then(function () {
-        if (!alive(list, token)) return;
-        if (step < steps) tick();
-        else {
-          list.forEach(function (lamp) { lamp.brightness = goal; });
-          setStatus("Готово");
-        }
-      }).catch(fail);
-    }
-    tick();
+  let brightTimer = 0;
+  let brightJob = null;
+
+  function applyBright(level, list) {
+    brightJob = { level: level, list: list || null };
+    clearTimeout(brightTimer);
+    brightTimer = setTimeout(function () {
+      const job = brightJob;
+      brightJob = null;
+      if (!job) return;
+      const lampsOn = job.list || need();
+      if (!lampsOn || !lampsOn.length) return;
+      const goal = clamp(Math.round(job.level), 0, 100);
+      lampsOn.forEach(function (lamp) { lamp.brightness = goal; });
+      send(lampsOn, function (lamp) { return [brightFrame(lamp, goal)]; }, "Яркость");
+    }, 70);
   }
 
   function applyMode(id) {
@@ -608,6 +589,17 @@
       swatch.setAttribute("data-swatch", lamp.id);
       swatch.style.background = lamp.connected ? hexOf(lamp.color) : "transparent";
       const name = el("span", "melk-name", lamp.name);
+      const level = document.createElement("input");
+      level.type = "range";
+      level.className = "melk-grow";
+      level.min = "0";
+      level.max = "100";
+      level.step = "1";
+      level.value = String(Math.round(lamp.brightness));
+      level.setAttribute("aria-label", "Яркость " + lamp.name);
+      level.addEventListener("input", function () {
+        applyBright(Number(level.value), [lamp]);
+      });
       const dialect = document.createElement("select");
       dialect.setAttribute("aria-label", "Протокол " + lamp.name);
       DIALECTS.forEach(function (item) {
@@ -621,7 +613,7 @@
         lamp.dialect = knownDialect(dialect.value);
         persist();
       });
-      row.append(mark, swatch, name, dialect);
+      row.append(mark, swatch, name, level, dialect);
       if (!lamp.connected) {
         const link = el("button", "melk-mini", "найти");
         link.type = "button";
@@ -727,7 +719,7 @@
     bright.step = "1";
     bright.value = String(lamps.length ? Math.round(lamps[0].brightness) : 80);
     bright.setAttribute("aria-label", "Яркость");
-    bright.addEventListener("change", function () { applyBright(Number(bright.value)); });
+    bright.addEventListener("input", function () { applyBright(Number(bright.value)); });
     brightRow.append(bright);
     root.append(brightRow);
 
